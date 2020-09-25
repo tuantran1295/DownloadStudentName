@@ -10,12 +10,15 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 import java.util.StringTokenizer;
 import java.util.regex.Pattern;
-
+import org.json.JSONObject;
 import org.apache.commons.fileupload.FileItem;
 import org.apache.commons.fileupload.disk.DiskFileItemFactory;
 import org.apache.commons.fileupload.servlet.ServletFileUpload;
@@ -23,10 +26,11 @@ import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.hssf.usermodel.*;
 
+
 @WebServlet("/UploadServlet")
 public class UploadServlet extends HttpServlet {
     private final String ROLL_NO_PATTERN = "^20CCTT[0-9][0-9][0-9]$";
-    private final String FULL_DATE_PATTERN = "^[0-9]{1,2}(|\\/)[0-9]{1,2}(|\\/)[0-9]{4}";
+    private final String FULL_DATE_PATTERN = "^[0-9]{1,2}(|\\/)[0-9]{1,2}(|\\/)[0-9]{2,4}";
     private final String YEAR_PATTERN = "^[0-9]{4}";
     protected ArrayList<Student> studentList = new ArrayList<Student>();
     private final String DOWNLOAD_PATH = "/Users/TuanTinhTe/Desktop/Java Web/DownloadStudentName/src/mp3";
@@ -43,10 +47,60 @@ public class UploadServlet extends HttpServlet {
         uploadMultipleFile(request, response);
     }
 
+    protected void downloadNameAudio(Student student) throws IOException {
+        String filePath = DOWNLOAD_PATH + File.separator + student.getRollNo() + ".mp3";
+        File target = new File(filePath);
+        String postUrl = "https://es.vbeecore.com/api/tts";
+        JSONObject request = new JSONObject();
+        request.put("input_text", student.getFullName());
+        request.put("voice", "hn_male_manhdung_news_48k-h");
+        request.put("app_id", "d8a535cc0b3508a6647ec5f3");
+        request.put("user_id", "2");
+        request.put("time", "1594711709658");
+        request.put("key", "42a1d25a3b8b0810a6fe98d1fd2e5ae0");
+        request.put("audio_type", "mp3");
+        request.put("rate", "0.7");
+
+        try {
+            URL obj = new URL(postUrl);
+            HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+            con.setRequestMethod("POST");
+            con.setRequestProperty("Content-Type", "application/json");
+            con.setDoOutput(true);
+            OutputStream os = con.getOutputStream();
+            os.write(request.toString().getBytes("UTF-8"));
+            os.flush();
+            os.close();
+            InputStream is = con.getInputStream();
+            Files.copy(is, target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            is.close();
+            con.disconnect();
+            System.out.println("File" + student.getRollNo() + ".mp3" + " downloaded");
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("POST request not worked");
+        }
+    }
+
+    private static String md5(String text) {
+        try {
+            MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] array = md.digest(text.getBytes());
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < array.length; ++i) {
+                sb.append(Integer.toHexString((array[i] & 0xFF) | 0x100).substring(1, 3));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "";
+    }
+
     protected void downloadNameMP3(Student student) throws IOException {
         String SOUND_URL = "https://vbee.vn/api/v1/convert-tts-api";
         String POST_PARAMS = "username=0904186221&" +
-                "input_text=" +  URLEncoder.encode(student.getFullName(), "UTF-8") + "&" +
+                "input_text=" + URLEncoder.encode(student.getFullName(), "UTF-8") + "&" +
                 "dictionary_id=5cdc3c391f7aae0619218024&" +
                 "application_id=76a14a1edbc8c34d255e6e9f&" +
                 "voice=sg_male_minhhoang_news_48k-d&" +
@@ -140,7 +194,8 @@ public class UploadServlet extends HttpServlet {
 
     }
 
-    protected void uploadMultipleFile(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+    protected void uploadMultipleFile(HttpServletRequest request, HttpServletResponse response) throws
+            ServletException, IOException {
         String UPLOAD_DIRECTORY = "/Users/TuanTinhTe/Desktop/Java Web/DownloadStudentName/src/public";
         if (ServletFileUpload.isMultipartContent(request)) {
             try {
@@ -161,9 +216,10 @@ public class UploadServlet extends HttpServlet {
             request.setAttribute("message", "Sorry this servlet only handles file upload request.");
         }
 
-        for (int i = 0; i < this.studentList.size(); i++) {
-            downloadNameMP3(this.studentList.get(i));
+        for (Student student : this.studentList) {
+            downloadNameAudio(student);
         }
+        System.out.println("Done download audio!!!");
 //        request.getRequestDispatcher("/result.jsp").forward(request, response);
     }
 
