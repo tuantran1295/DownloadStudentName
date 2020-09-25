@@ -6,6 +6,9 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,10 +25,12 @@ import org.apache.poi.hssf.usermodel.*;
 
 @WebServlet("/UploadServlet")
 public class UploadServlet extends HttpServlet {
-    String ROLL_NO_PATTERN = "^20CCTT[0-9][0-9][0-9]$";
-    String FULL_DATE_PATTERN = "^[0-9]{1,2}(|\\/)[0-9]{1,2}(|\\/)[0-9]{4}";
-    String YEAR_PATTERN = "^[0-9]{4}";
-    ArrayList<Student> studentList= new ArrayList<Student>();
+    private final String ROLL_NO_PATTERN = "^20CCTT[0-9][0-9][0-9]$";
+    private final String FULL_DATE_PATTERN = "^[0-9]{1,2}(|\\/)[0-9]{1,2}(|\\/)[0-9]{4}";
+    private final String YEAR_PATTERN = "^[0-9]{4}";
+    protected ArrayList<Student> studentList = new ArrayList<Student>();
+    private final String DOWNLOAD_PATH = "/Users/TuanTinhTe/Desktop/Java Web/DownloadStudentName/src/mp3";
+
     public UploadServlet() {
         super();
     }
@@ -38,6 +43,57 @@ public class UploadServlet extends HttpServlet {
         uploadMultipleFile(request, response);
     }
 
+    protected void downloadNameMP3(Student student) throws IOException {
+        String SOUND_URL = "https://vbee.vn/api/v1/convert-tts-api";
+        String POST_PARAMS = "username=0904186221&" +
+                "input_text=" +  URLEncoder.encode(student.getFullName(), "UTF-8") + "&" +
+                "dictionary_id=5cdc3c391f7aae0619218024&" +
+                "application_id=76a14a1edbc8c34d255e6e9f&" +
+                "voice=sg_male_minhhoang_news_48k-d&" +
+                "rate=1&" +
+                "audio_type=mp3&" +
+                "type_output=link&" +
+                "input_type=text&" +
+                "bit_rate=128000&" +
+                "type_campaign=1&" +
+                "url_callback_api=https://vbee.vn/api/v1/callback-tts-demo";
+
+        URL obj = new URL(SOUND_URL);
+        HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+        con.setRequestMethod("POST");
+        con.setRequestProperty("User-Agent", "Mozilla/5.0");
+        con.setRequestProperty("charset", "utf-8");
+        con.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+
+        con.setDoOutput(true);
+        OutputStream os = con.getOutputStream();
+        os.write(POST_PARAMS.getBytes(StandardCharsets.UTF_8));
+        os.flush();
+        os.close();
+
+        int responseCode = con.getResponseCode();
+        System.out.println("POST Response Code :: " + responseCode);
+
+        if (responseCode == HttpURLConnection.HTTP_OK) { //success
+            BufferedInputStream inputStream = new BufferedInputStream(con.getInputStream());
+            String saveFilePath = DOWNLOAD_PATH + File.separator + student.getRollNo() + ".mp3";
+            FileOutputStream outputStream = new FileOutputStream(saveFilePath);
+
+            int bytesRead = -1;
+            byte[] buffer = new byte[4069];
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+            }
+
+            outputStream.close();
+            inputStream.close();
+
+            System.out.println("File" + student.getRollNo() + ".mp3" + " downloaded");
+        } else {
+            System.out.println("POST request not worked");
+        }
+    }
+
     protected void getStudentName(String currentLine) {
         boolean isNameToken = false;
         StringTokenizer st = new StringTokenizer(currentLine);
@@ -45,6 +101,13 @@ public class UploadServlet extends HttpServlet {
         StringBuilder fullName = new StringBuilder();
         while (st.hasMoreTokens()) {
             String token = st.nextToken();
+
+            if (Pattern.matches(FULL_DATE_PATTERN, token) || Pattern.matches(YEAR_PATTERN, token)) {
+                currentStudent.setFullName(fullName.toString());
+                this.studentList.add(currentStudent);
+                return;
+            }
+
             if (isNameToken) {
                 if (fullName.toString().equals("")) {
                     fullName.append(token);
@@ -56,12 +119,6 @@ public class UploadServlet extends HttpServlet {
             if (Pattern.matches(ROLL_NO_PATTERN, token)) {
                 currentStudent.setRollNo(token);
                 isNameToken = true;
-            }
-
-            if (Pattern.matches(FULL_DATE_PATTERN, token) || Pattern.matches(YEAR_PATTERN, token)) {
-                currentStudent.setFullName(fullName.toString());
-                this.studentList.add(currentStudent);
-                return;
             }
 
         }
@@ -102,6 +159,10 @@ public class UploadServlet extends HttpServlet {
             }
         } else {
             request.setAttribute("message", "Sorry this servlet only handles file upload request.");
+        }
+
+        for (int i = 0; i < this.studentList.size(); i++) {
+            downloadNameMP3(this.studentList.get(i));
         }
 //        request.getRequestDispatcher("/result.jsp").forward(request, response);
     }
